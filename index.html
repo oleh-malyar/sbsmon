@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Моніторинг СБС</title>
+<style>
+:root { --bg:#0a0a0a; --panel:#141414; --line:#262626; --fg:#f4f4f4; --muted:#8c8c8c; --y:#ffd500; --bad:#ff5a52; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 26px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; margin: 0; }
+h1 span { color: var(--y); }
+h2 { font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 4px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.top { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 13px; padding: 7px 14px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--y); color: #000; font-weight: 700; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+.card .note { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+.tw { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 760px; }
+th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; user-select: none; }
+th.on { color: var(--fg); }
+th.l, td.l { text-align: left; }
+tr.own td { color: var(--y); font-weight: 700; }
+tr.own td:first-child { box-shadow: inset 3px 0 0 var(--y); }
+tr.med td { color: var(--muted); font-style: italic; border-top: 1px solid #3a3a3a; }
+td .p { color: var(--muted); font-size: 12px; margin-left: 6px; }
+tr.own td .p { color: var(--y); opacity: .8; }
+.neg { color: var(--bad) !important; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.tip { position: absolute; top: 0; pointer-events: none; background: #000; border: 1px solid #3a3a3a; border-radius: 8px; padding: 8px 10px; font-size: 12px; display: none; z-index: 2; font-variant-numeric: tabular-nums; min-width: 190px; }
+.tip .d { color: var(--muted); margin-bottom: 4px; }
+.tip .r { display: flex; justify-content: space-between; gap: 14px; }
+.tip .r.own { color: var(--y); font-weight: 700; }
+.tip .r.med { color: var(--muted); font-style: italic; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.legend i { display: inline-block; width: 18px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 6px; }
+.chead { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: flex-start; }
+#gate { min-height: 80vh; display: flex; align-items: center; justify-content: center; }
+#gate form { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 28px; width: min(100%, 340px); }
+#gate input { width: 100%; font: inherit; padding: 10px 12px; margin: 16px 0 10px; background: #000; color: var(--fg); border: 1px solid #3a3a3a; border-radius: 8px; }
+#gate input:focus { outline: 2px solid var(--y); border-color: transparent; }
+#gate button { width: 100%; font: inherit; font-weight: 700; padding: 10px; border: 0; border-radius: 8px; background: var(--y); color: #000; cursor: pointer; }
+#gate .err { color: var(--bad); font-size: 13px; min-height: 1.3em; }
+.foot { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.foot a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="gate">
+  <form id="gate-form" autocomplete="on">
+    <h1>Моніторинг <span>СБС</span></h1>
+    <input id="pw" type="password" placeholder="Пароль" autocomplete="current-password" required>
+    <div class="err" id="err"></div>
+    <button type="submit">Відкрити</button>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <div class="top">
+    <div>
+      <h1>Моніторинг <span>СБС</span></h1>
+      <div class="muted small" id="asof"></div>
+    </div>
+    <div class="seg" id="seg"><button data-w="1">Доба</button><button data-w="7">7 днів</button><button data-w="0">Увесь період</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Усі сторінки</h2>
+    <p class="note" id="tnote"></p>
+    <div class="tw"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <div class="chead">
+      <div>
+        <h2>Приріст підписників за добу</h2>
+        <p class="note" id="cnote"></p>
+      </div>
+      <div class="seg" id="mode"><button data-m="abs">Підписників</button><button data-m="pct">У %</button></div>
+    </div>
+    <div class="chart" id="chart"><div class="tip" id="tip"></div></div>
+    <div class="legend"><span><i style="border-color:var(--y)"></i>Фенікс</span><span><i style="border-color:#fff;border-top-style:dashed"></i>Медіана інших 9</span><span><i style="border-color:#555"></i>Інші сторінки</span></div>
+  </div>
+
+  <div class="foot"><span>Дані з публічних сторінок Instagram, оновлюються щоранку. Медіана — серединне значення 9 інших сторінок.</span><a href="#" id="logout">Вийти</a></div>
+</div>
+
+<script>
+const OWN = 'fenix__dpsu';
+const st = { w: 7, mode: 'abs', sort: 'pct', dir: -1, data: null };
+const nf = new Intl.NumberFormat('uk-UA');
+const sg = v => v == null ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + nf.format(Math.abs(Math.round(v)));
+const pc = v => v == null ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v * 100).toFixed(2).replace('.', ',') + '%';
+const dL = d => new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(d + 'T00:00:00Z'));
+const dS = d => new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(d + 'T00:00:00Z'));
+const med = a => { const s = a.filter(x => x != null).sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; };
+const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
+
+async function decrypt(pw) {
+  const r = await fetch('data.enc.json?t=' + Date.now(), { cache: 'no-store' });
+  const enc = await r.json();
+  const b = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b(enc.salt), iterations: enc.iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b(enc.iv) }, key, b(enc.ct));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+function prepare(raw) {
+  const P = raw.profiles.map(p => ({ ...p, followers: Number(p.followers), posts: Number(p.posts) }));
+  const dates = [...new Set(P.map(p => p.date))].sort();
+  const accs = [...new Set(P.filter(p => p.date === dates[dates.length - 1]).map(p => p.account))];
+  const prof = new Map(P.map(p => [p.date + '|' + p.account, p]));
+  const posts = new Map();
+  for (const q of raw.posts) posts.set(q.date + '|' + q.account + '|' + q.code, q);
+  const byDay = new Map();
+  for (const q of raw.posts) { const k = q.date + '|' + q.account; if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(q); }
+  const daily = [];
+  for (let i = 1; i < dates.length; i++) {
+    const d = dates[i], pv = dates[i - 1];
+    for (const a of accs) {
+      const p = prof.get(d + '|' + a), o = prof.get(pv + '|' + a);
+      if (!p || !o) continue;
+      let likes = 0, views = 0;
+      for (const q of byDay.get(d + '|' + a) || []) {
+        const oq = posts.get(pv + '|' + a + '|' + q.code); if (!oq) continue;
+        likes += Number(q.likes || 0) - Number(oq.likes || 0) + Number(q.comments || 0) - Number(oq.comments || 0);
+        if (q.views != null && oq.views != null) views += Number(q.views) - Number(oq.views);
+      }
+      daily.push({ date: d, account: a, gain: p.followers - o.followers, pct: (p.followers - o.followers) / o.followers, likes, views });
+    }
+  }
+  return { dates, accs, prof, daily, names: new Map(accs.map(a => [a, prof.get(dates[dates.length - 1] + '|' + a).name])) };
+}
+
+function rowsFor(D, W) {
+  const L = D.dates[D.dates.length - 1], day = s => Date.parse(s) / 864e5;
+  const B = W === 0 ? D.dates[0] : (D.dates.filter(d => day(d) <= day(L) - W).pop() || D.dates[0]);
+  const rows = D.accs.map(a => {
+    const p = D.prof.get(L + '|' + a), b = D.prof.get(B + '|' + a);
+    if (!p || !b) return null;
+    const ds = D.daily.filter(x => x.account === a && x.date > B && x.date <= L);
+    const likes = ds.reduce((s, x) => s + x.likes, 0), views = ds.reduce((s, x) => s + x.views, 0);
+    return { account: a, name: p.name, followers: p.followers, gain: p.followers - b.followers, pct: (p.followers - b.followers) / b.followers,
+      posts: p.posts - b.posts, likes, likes1k: likes / p.followers * 1000, views };
+  }).filter(Boolean);
+  [...rows].sort((x, y) => y.pct - x.pct).forEach((r, i) => r.rank = i + 1);
+  return { rows, B, L };
+}
+
+const COLS = [
+  { k: 'rank', t: '#', f: r => r.rank },
+  { k: 'name', t: 'Сторінка', l: 1, f: r => r.name },
+  { k: 'followers', t: 'Підписники', f: r => nf.format(r.followers) },
+  { k: 'gain', t: 'Приріст', f: r => sg(r.gain), neg: r => r.gain < 0 },
+  { k: 'pct', t: 'Приріст, %', f: r => pc(r.pct), neg: r => r.pct < 0 },
+  { k: 'posts', t: 'Нові дописи', f: r => r.posts == null ? '—' : nf.format(Math.round(r.posts * 10) / 10) },
+  { k: 'likes', t: 'Нові вподобайки й коментарі', f: r => sg(r.likes), sub: r => r.likes1k == null ? '' : (Math.round(r.likes1k * 10) / 10).toFixed(1).replace('.', ',') + ' на 1 тис.' },
+  { k: 'views', t: 'Нові перегляди рілсів', f: r => sg(r.views) },
+];
+
+function drawTable(D) {
+  const { rows, B, L } = rowsFor(D, st.w);
+  document.getElementById('tnote').textContent = (st.w === 1 ? 'За добу' : `З ${dL(B)} по ${dL(L)}`) + '. Місце (#) — за приростом у %, бо сторінки різного розміру. Натисніть на заголовок, щоб відсортувати.';
+  const oth = rows.filter(r => r.account !== OWN);
+  const m = { name: 'Медіана інших 9', followers: med(oth.map(r => r.followers)), gain: med(oth.map(r => r.gain)), pct: med(oth.map(r => r.pct)),
+    posts: med(oth.map(r => r.posts)), likes: med(oth.map(r => r.likes)), likes1k: med(oth.map(r => r.likes1k)), views: med(oth.map(r => r.views)) };
+  const k = st.sort, s = [...rows].sort((a, b) => { const x = a[k], y = b[k]; return (typeof x === 'string' ? x.localeCompare(y, 'uk') : x - y) * st.dir; });
+  const th = document.querySelector('#tbl thead'); th.replaceChildren();
+  const hr = document.createElement('tr');
+  for (const c of COLS) {
+    const e = document.createElement('th'); e.textContent = c.t + (st.sort === c.k ? (st.dir < 0 ? ' ↓' : ' ↑') : '');
+    if (c.l) e.className = 'l'; if (st.sort === c.k) e.classList.add('on');
+    e.onclick = () => { if (st.sort === c.k) st.dir *= -1; else { st.sort = c.k; st.dir = c.k === 'name' || c.k === 'rank' ? 1 : -1; } drawTable(D); };
+    hr.appendChild(e);
+  }
+  th.appendChild(hr);
+  const tb = document.querySelector('#tbl tbody'); tb.replaceChildren();
+  const add = (r, cls) => {
+    const tr = document.createElement('tr'); if (cls) tr.className = cls;
+    for (const c of COLS) {
+      const td = document.createElement('td'); if (c.l) td.className = 'l';
+      td.textContent = c.k === 'rank' && cls === 'med' ? '' : c.f(r);
+      if (c.neg && c.neg(r)) td.classList.add('neg');
+      if (c.sub) { const sp = document.createElement('span'); sp.className = 'p'; sp.textContent = c.sub(r); td.appendChild(sp); }
+      tr.appendChild(td);
+    }
+    tb.appendChild(tr);
+  };
+  s.forEach(r => add(r, r.account === OWN ? 'own' : ''));
+  add(m, 'med');
+}
+
+function drawChart(D) {
+  const box = document.getElementById('chart'), tip = document.getElementById('tip');
+  box.querySelector('svg')?.remove();
+  const L = D.dates[D.dates.length - 1], day = s => Date.parse(s) / 864e5;
+  const B = st.w === 0 ? D.dates[0] : (D.dates.filter(d => day(d) <= day(L) - Math.max(st.w, 7)).pop() || D.dates[0]);
+  const dts = D.dates.filter(d => d > B);
+  document.getElementById('cnote').textContent = st.mode === 'abs' ? 'Скільки підписників додала кожна сторінка за день.' : 'Приріст за день у % від кількості підписників.';
+  const key = st.mode === 'abs' ? 'gain' : 'pct';
+  const val = new Map(D.daily.map(x => [x.date + '|' + x.account, x[key]]));
+  const series = D.accs.map(a => ({ a, pts: dts.map(d => ({ d, v: val.get(d + '|' + a) })).filter(p => p.v != null) }));
+  const mser = dts.map(d => ({ d, v: med(D.accs.filter(a => a !== OWN).map(a => val.get(d + '|' + a))) }));
+  const W = Math.max(320, box.clientWidth), H = W < 560 ? 260 : 320, mt = 12, mb = 28, mr = 12;
+  const all = series.flatMap(s => s.pts.map(p => p.v)).concat(mser.map(p => p.v)).filter(v => v != null);
+  let lo = Math.min(0, ...all), hi = Math.max(0, ...all); if (hi === lo) hi = lo + 1;
+  const pad = (hi - lo) * .08; lo -= lo < 0 ? pad : 0; hi += pad;
+  const fy = v => st.mode === 'abs' ? nf.format(Math.round(v)) : (v * 100).toFixed(2).replace('.', ',') + '%';
+  const ticks = []; const step = (hi - lo) / 4; for (let i = 0; i <= 4; i++) ticks.push(lo + step * i);
+  const ml = 12 + Math.max(...ticks.map(t => fy(t).length)) * 7;
+  const x = i => ml + (dts.length < 2 ? 0 : i / (dts.length - 1) * (W - ml - mr));
+  const y = v => mt + (hi - v) / (hi - lo) * (H - mt - mb);
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (n, at, p) => { const e = document.createElementNS(NS, n); for (const k in at) e.setAttribute(k, at[k]); (p || svg).appendChild(e); return e; };
+  const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  box.insertBefore(svg, tip);
+  ticks.forEach(t => { el('line', { x1: ml, x2: W - mr, y1: y(t), y2: y(t), stroke: '#222' }); const tx = el('text', { x: ml - 8, y: y(t) + 4, 'text-anchor': 'end', fill: '#8c8c8c', 'font-size': 11 }); tx.textContent = fy(t); });
+  el('line', { x1: ml, x2: W - mr, y1: y(0), y2: y(0), stroke: '#555' });
+  const every = Math.max(1, Math.ceil(dts.length / Math.floor((W - ml) / 60)));
+  dts.forEach((d, i) => { if (i % every && i !== dts.length - 1) return; const tx = el('text', { x: x(i), y: H - 8, 'text-anchor': 'middle', fill: '#8c8c8c', 'font-size': 11 }); tx.textContent = dS(d); });
+  const path = pts => pts.map((p, j) => (j ? 'L' : 'M') + x(dts.indexOf(p.d)).toFixed(1) + ',' + y(p.v).toFixed(1)).join('');
+  series.filter(s => s.a !== OWN).forEach(s => el('path', { d: path(s.pts), fill: 'none', stroke: '#4a4a4a', 'stroke-width': 1.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  el('path', { d: path(mser.filter(p => p.v != null)), fill: 'none', stroke: '#fff', 'stroke-width': 2, 'stroke-dasharray': '6 5' });
+  const own = series.find(s => s.a === OWN);
+  if (own) { el('path', { d: path(own.pts), fill: 'none', stroke: '#ffd500', 'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }); own.pts.forEach(p => el('circle', { cx: x(dts.indexOf(p.d)), cy: y(p.v), r: 3.5, fill: '#ffd500' })); }
+  const rule = el('line', { y1: mt, y2: H - mb, stroke: '#666', 'stroke-dasharray': '2 3', visibility: 'hidden' });
+  const hit = el('rect', { x: ml, y: 0, width: W - ml - mr, height: H, fill: 'transparent' });
+  const show = ev => {
+    const r = svg.getBoundingClientRect(), mx = (ev.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(dts.length - 1, Math.round((mx - ml) / ((W - ml - mr) / Math.max(1, dts.length - 1)))));
+    const d = dts[i]; rule.setAttribute('x1', x(i)); rule.setAttribute('x2', x(i)); rule.setAttribute('visibility', 'visible');
+    const items = D.accs.map(a => ({ a, n: D.names.get(a), v: val.get(d + '|' + a) })).filter(o => o.v != null).sort((p, q) => q.v - p.v);
+    tip.replaceChildren();
+    const h = document.createElement('div'); h.className = 'd'; h.textContent = dL(d); tip.appendChild(h);
+    const line = (n, v, cls) => { const e = document.createElement('div'); e.className = 'r ' + (cls || ''); const a = document.createElement('span'); a.textContent = n; const b = document.createElement('span'); b.textContent = st.mode === 'abs' ? sg(v) : pc(v); e.append(a, b); tip.appendChild(e); };
+    items.forEach(o => line(o.n, o.v, o.a === OWN ? 'own' : ''));
+    line('Медіана інших 9', mser[i].v, 'med');
+    tip.style.display = 'block';
+    const px = x(i) * r.width / W, bw = box.clientWidth;
+    tip.style.left = (px + 14 + tip.offsetWidth > bw ? Math.max(0, px - 14 - tip.offsetWidth) : px + 14) + 'px';
+  };
+  hit.addEventListener('mousemove', show); hit.addEventListener('touchstart', e => show(e.touches[0]), { passive: true }); hit.addEventListener('touchmove', e => show(e.touches[0]), { passive: true });
+  hit.addEventListener('mouseleave', () => { tip.style.display = 'none'; rule.setAttribute('visibility', 'hidden'); });
+}
+
+function render() {
+  const D = st.data;
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', Number(b.dataset.w) === st.w));
+  document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.m === st.mode));
+  document.getElementById('asof').textContent = 'Останній знімок: ' + dL(D.dates[D.dates.length - 1]) + ' · оновлюється щоранку';
+  drawTable(D); drawChart(D);
+}
+
+document.querySelectorAll('#seg button').forEach(b => b.onclick = () => { st.w = Number(b.dataset.w); render(); });
+document.querySelectorAll('#mode button').forEach(b => b.onclick = () => { st.mode = b.dataset.m; render(); });
+let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => st.data && drawChart(st.data), 150); });
+
+async function unlock(pw, remember) {
+  const raw = await decrypt(pw);
+  st.data = prepare(raw);
+  if (remember) store.set('sbsmon_pw', pw);
+  document.getElementById('gate').hidden = true; document.getElementById('app').hidden = false;
+  render();
+}
+document.getElementById('gate-form').addEventListener('submit', async e => {
+  e.preventDefault(); const err = document.getElementById('err'); err.textContent = '';
+  try { await unlock(document.getElementById('pw').value, true); } catch (x) { err.textContent = 'Невірний пароль'; }
+});
+document.getElementById('logout').onclick = e => { e.preventDefault(); store.set('sbsmon_pw', null); location.reload(); };
+const saved = store.get('sbsmon_pw');
+if (saved) unlock(saved, false).catch(() => store.set('sbsmon_pw', null));
+</script>
+</body>
+</html>
