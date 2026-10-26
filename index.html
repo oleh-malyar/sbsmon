@@ -139,6 +139,7 @@ function prepare(raw) {
   const accs = [...new Set(P.filter(p => p.date === dates[dates.length - 1]).map(p => p.account))];
   const prof = new Map(P.map(p => [p.date + '|' + p.account, p]));
   const posts = new Map();
+  const foreign = q => q.owner && q.owner !== q.account;
   for (const q of raw.posts) posts.set(q.date + '|' + q.account + '|' + q.code, q);
   const byDay = new Map();
   for (const q of raw.posts) { const k = q.date + '|' + q.account; if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(q); }
@@ -150,6 +151,7 @@ function prepare(raw) {
       if (!p || !o) continue;
       let likes = 0, views = 0;
       for (const q of byDay.get(d + '|' + a) || []) {
+        if (foreign(q)) continue;
         const oq = posts.get(pv + '|' + a + '|' + q.code); if (!oq) continue;
         likes += Number(q.likes || 0) - Number(oq.likes || 0) + Number(q.comments || 0) - Number(oq.comments || 0);
         if (q.views != null && oq.views != null) views += Number(q.views) - Number(oq.views);
@@ -162,10 +164,11 @@ function prepare(raw) {
   const pm = new Map();
   for (const q of [...raw.posts].sort((x, y) => x.date < y.date ? -1 : 1)) {
     if (q.likes == null && q.comments == null) continue;
+    if (foreign(q)) continue;
     const k = q.account + '|' + q.code, e = pm.get(k);
     const rec = { account: q.account, code: q.code, type: q.type, caption: q.caption || '', first: e ? e.first : q.date, last: q.date,
       eng: Number(q.likes || 0) + Number(q.comments || 0), likes: Number(q.likes || 0), comments: Number(q.comments || 0),
-      views: q.views == null ? (e ? e.views : null) : Number(q.views), collab: owners.get(q.code).size > 1 };
+      views: q.views == null ? (e ? e.views : null) : Number(q.views), collab: !q.owner && owners.get(q.code).size > 1 };
     pm.set(k, rec);
   }
   return { dates, accs, prof, daily, postList: [...pm.values()], names: new Map(accs.map(a => [a, prof.get(dates[dates.length - 1] + '|' + a).name])) };
@@ -192,7 +195,7 @@ function viralFor(D, W) {
 
 function drawViral(D) {
   const V = viralFor(D, st.w), box = document.getElementById('viral');
-  document.getElementById('vnote').textContent = `Допис «залетів», якщо набрав щонайменше втричі більше вподобайок і коментарів (або переглядів — для рілсів), ніж звичайний допис цієї ж сторінки (медіана всіх її дописів у моніторингу). ${st.w === 0 ? 'Усі дописи за весь час моніторингу.' : 'Дописи, що були в сітці сторінки за обраний період.'} Спільні дописи кількох сторінок не враховано.`;
+  document.getElementById('vnote').textContent = `Допис «залетів», якщо набрав щонайменше втричі більше вподобайок і коментарів (або переглядів — для рілсів), ніж звичайний допис цієї ж сторінки (медіана всіх її дописів у моніторингу). ${st.w === 0 ? 'Усі дописи за весь час моніторингу.' : 'Дописи, що були в сітці сторінки за обраний період.'} Спільні дописи, автор яких інша сторінка, не враховано.`;
   const order = [...D.accs].sort((a, b) => (a === OWN ? -1 : b === OWN ? 1 : V.get(b).hits.length - V.get(a).hits.length || D.names.get(a).localeCompare(D.names.get(b), 'uk')));
   const TYPE = { reel: 'Рілс', carousel: 'Карусель', photo: 'Фото', video: 'Відео' };
   const x = v => '×' + (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');

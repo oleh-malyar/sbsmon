@@ -17,7 +17,7 @@ def main():
         sys.exit("usage: SBSMON_PASS=... build.py profiles.json posts.json")
     profiles = json.load(open(sys.argv[1], encoding="utf-8"))
     posts = json.load(open(sys.argv[2], encoding="utf-8"))
-    keep = ("date", "account", "code", "type", "likes", "comments", "views", "caption")
+    keep = ("date", "account", "code", "owner", "type", "likes", "comments", "views", "caption")
     posts = [{k: p.get(k) for k in keep} for p in posts]
     plain = json.dumps({"profiles": profiles, "posts": posts}, ensure_ascii=False, separators=(",", ":")).encode()
     salt, iv = os.urandom(16), os.urandom(12)
