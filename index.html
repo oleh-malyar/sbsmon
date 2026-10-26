@@ -51,6 +51,17 @@ tr.own td .p { color: var(--y); opacity: .8; }
 #gate input:focus { outline: 2px solid var(--y); border-color: transparent; }
 #gate button { width: 100%; font: inherit; font-weight: 700; padding: 10px; border: 0; border-radius: 8px; background: var(--y); color: #000; cursor: pointer; }
 #gate .err { color: var(--bad); font-size: 13px; min-height: 1.3em; }
+.vacc { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.vacc:last-child { border-bottom: 0; }
+.vacc.own .vh b { color: var(--y); }
+.vh { margin-bottom: 6px; }
+.vrow { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0 8px 12px; border-left: 2px solid #333; margin: 6px 0; }
+.vacc.own .vrow { border-left-color: var(--y); }
+.vrow a { color: var(--fg); text-decoration: none; }
+.vrow a:hover { text-decoration: underline; }
+.vnum { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--y); font-weight: 600; text-align: right; }
+.vnone { padding-left: 12px; }
+@media (max-width: 600px) { .vrow { flex-direction: column; gap: 4px; } .vnum { white-space: normal; text-align: left; } }
 .foot { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .foot a { color: var(--muted); }
 </style>
@@ -90,6 +101,12 @@ tr.own td .p { color: var(--y); opacity: .8; }
     </div>
     <div class="chart" id="chart"><div class="tip" id="tip"></div></div>
     <div class="legend"><span><i style="border-color:var(--y)"></i>Фенікс</span><span><i style="border-color:#fff;border-top-style:dashed"></i>Медіана інших 9</span><span><i style="border-color:#555"></i>Інші сторінки</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Дописи, що залетіли</h2>
+    <p class="note" id="vnote"></p>
+    <div id="viral"></div>
   </div>
 
   <div class="foot"><span>Дані з публічних сторінок Instagram, оновлюються щоранку. Медіана — серединне значення 9 інших сторінок.</span><a href="#" id="logout">Вийти</a></div>
@@ -140,7 +157,68 @@ function prepare(raw) {
       daily.push({ date: d, account: a, gain: p.followers - o.followers, pct: (p.followers - o.followers) / o.followers, likes, views });
     }
   }
-  return { dates, accs, prof, daily, names: new Map(accs.map(a => [a, prof.get(dates[dates.length - 1] + '|' + a).name])) };
+  const owners = new Map();
+  for (const q of raw.posts) { if (!owners.has(q.code)) owners.set(q.code, new Set()); owners.get(q.code).add(q.account); }
+  const pm = new Map();
+  for (const q of [...raw.posts].sort((x, y) => x.date < y.date ? -1 : 1)) {
+    if (q.likes == null && q.comments == null) continue;
+    const k = q.account + '|' + q.code, e = pm.get(k);
+    const rec = { account: q.account, code: q.code, type: q.type, caption: q.caption || '', first: e ? e.first : q.date, last: q.date,
+      eng: Number(q.likes || 0) + Number(q.comments || 0), likes: Number(q.likes || 0), comments: Number(q.comments || 0),
+      views: q.views == null ? (e ? e.views : null) : Number(q.views), collab: owners.get(q.code).size > 1 };
+    pm.set(k, rec);
+  }
+  return { dates, accs, prof, daily, postList: [...pm.values()], names: new Map(accs.map(a => [a, prof.get(dates[dates.length - 1] + '|' + a).name])) };
+}
+
+const VIRAL_X = 3;
+function viralFor(D, W) {
+  const L = D.dates[D.dates.length - 1], day = s => Date.parse(s) / 864e5;
+  const B = W === 0 ? null : (D.dates.filter(d => day(d) <= day(L) - W).pop() || D.dates[0]);
+  const out = new Map();
+  for (const a of D.accs) {
+    const all = D.postList.filter(p => p.account === a && !p.collab);
+    const mE = med(all.map(p => p.eng));
+    const mV = med(all.filter(p => p.type === 'reel' && p.views != null).map(p => p.views));
+    const hits = all.filter(p => W === 0 || p.last > B).map(p => ({ ...p,
+      xE: mE ? p.eng / mE : null, xV: p.type === 'reel' && p.views != null && mV ? p.views / mV : null,
+      young: day(L) - day(p.first) < 3 && p.first !== D.dates[0] }))
+      .filter(p => (p.xE != null && p.xE >= VIRAL_X) || (p.xV != null && p.xV >= VIRAL_X))
+      .sort((x, y) => Math.max(y.xE || 0, y.xV || 0) - Math.max(x.xE || 0, x.xV || 0));
+    out.set(a, { medEng: mE, medViews: mV, n: all.length, hits });
+  }
+  return out;
+}
+
+function drawViral(D) {
+  const V = viralFor(D, st.w), box = document.getElementById('viral');
+  document.getElementById('vnote').textContent = `Допис «залетів», якщо набрав щонайменше втричі більше вподобайок і коментарів (або переглядів — для рілсів), ніж звичайний допис цієї ж сторінки (медіана всіх її дописів у моніторингу). ${st.w === 0 ? 'Усі дописи за весь час моніторингу.' : 'Дописи, що були в сітці сторінки за обраний період.'} Спільні дописи кількох сторінок не враховано.`;
+  const order = [...D.accs].sort((a, b) => (a === OWN ? -1 : b === OWN ? 1 : V.get(b).hits.length - V.get(a).hits.length || D.names.get(a).localeCompare(D.names.get(b), 'uk')));
+  const TYPE = { reel: 'Рілс', carousel: 'Карусель', photo: 'Фото', video: 'Відео' };
+  const x = v => '×' + (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
+  box.replaceChildren(...order.map(a => {
+    const v = V.get(a), sec = document.createElement('div'); sec.className = 'vacc' + (a === OWN ? ' own' : '');
+    const h = document.createElement('div'); h.className = 'vh';
+    const nm = document.createElement('b'); nm.textContent = D.names.get(a);
+    const sub = document.createElement('span'); sub.className = 'muted small';
+    sub.textContent = ` · звичайний допис: ${v.medEng == null ? '—' : nf.format(Math.round(v.medEng))} вподобайок і коментарів` + (v.medViews ? `, рілс: ${nf.format(Math.round(v.medViews))} переглядів` : '');
+    h.append(nm, sub); sec.appendChild(h);
+    if (!v.hits.length) { const e = document.createElement('div'); e.className = 'muted small vnone'; e.textContent = 'Немає дописів, що залетіли'; sec.appendChild(e); return sec; }
+    for (const p of v.hits) {
+      const r = document.createElement('div'); r.className = 'vrow';
+      const t = document.createElement('a'); t.href = `https://www.instagram.com/p/${encodeURIComponent(p.code)}/`; t.target = '_blank'; t.rel = 'noopener'; t.textContent = p.caption || '(без підпису)';
+      const meta = document.createElement('span'); meta.className = 'muted small';
+      meta.textContent = `${TYPE[p.type] || p.type} · з ${dS(p.first)}${p.young ? ' · новий, ще росте' : ''}`;
+      const nums = document.createElement('span'); nums.className = 'vnum';
+      const parts = [];
+      parts.push(`${nf.format(p.eng)} вподоб.+комент.` + (p.xE != null && p.xE >= VIRAL_X ? ` (${x(p.xE)})` : ''));
+      if (p.views != null) parts.push(`${nf.format(p.views)} перегл.` + (p.xV != null && p.xV >= VIRAL_X ? ` (${x(p.xV)})` : ''));
+      nums.textContent = parts.join(' · ');
+      const left = document.createElement('div'); left.append(t, document.createElement('br'), meta);
+      r.append(left, nums); sec.appendChild(r);
+    }
+    return sec;
+  }));
 }
 
 function rowsFor(D, W) {
@@ -259,7 +337,7 @@ function render() {
   document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', Number(b.dataset.w) === st.w));
   document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.m === st.mode));
   document.getElementById('asof').textContent = 'Останній знімок: ' + dL(D.dates[D.dates.length - 1]) + ' · оновлюється щоранку';
-  drawTable(D); drawChart(D);
+  drawTable(D); drawChart(D); drawViral(D);
 }
 
 document.querySelectorAll('#seg button').forEach(b => b.onclick = () => { st.w = Number(b.dataset.w); render(); });
