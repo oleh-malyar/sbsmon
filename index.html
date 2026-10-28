@@ -61,6 +61,8 @@ tr.own td .p { color: var(--y); opacity: .8; }
 .vrow a:hover { text-decoration: underline; }
 .vnum { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--y); font-weight: 600; text-align: right; }
 .vnone { padding-left: 12px; }
+.vacc.flop .vnum { color: var(--bad); }
+.vacc.flop.own .vrow { border-left-color: var(--bad); }
 @media (max-width: 600px) { .vrow { flex-direction: column; gap: 4px; } .vnum { white-space: normal; text-align: left; } }
 .foot { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .foot a { color: var(--muted); }
@@ -107,6 +109,12 @@ tr.own td .p { color: var(--y); opacity: .8; }
     <h2>Дописи, що залетіли</h2>
     <p class="note" id="vnote"></p>
     <div id="viral"></div>
+  </div>
+
+  <div class="card">
+    <h2>Провальні дописи</h2>
+    <p class="note" id="fnote"></p>
+    <div id="flop"></div>
   </div>
 
   <div class="foot"><span>Дані з публічних сторінок Instagram, оновлюються щоранку. Медіана — серединне значення 9 інших сторінок.</span><a href="#" id="logout">Вийти</a></div>
@@ -175,7 +183,7 @@ function prepare(raw) {
 }
 
 const VIRAL_X = 3;
-function viralFor(D, W) {
+function viralFor(D, W, flop) {
   const L = D.dates[D.dates.length - 1], day = s => Date.parse(s) / 864e5;
   const B = W === 0 ? null : (D.dates.filter(d => day(d) <= day(L) - W).pop() || D.dates[0]);
   const out = new Map();
@@ -186,27 +194,34 @@ function viralFor(D, W) {
     const hits = all.filter(p => W === 0 || p.last > B).map(p => ({ ...p,
       xE: mE ? p.eng / mE : null, xV: p.type === 'reel' && p.views != null && mV ? p.views / mV : null,
       young: day(L) - day(p.first) < 3 && p.first !== D.dates[0] }))
-      .filter(p => (p.xE != null && p.xE >= VIRAL_X) || (p.xV != null && p.xV >= VIRAL_X))
-      .sort((x, y) => Math.max(y.xE || 0, y.xV || 0) - Math.max(x.xE || 0, x.xV || 0));
+      .filter(flop
+        ? p => !p.young && ((p.xE != null && p.xE <= 1 / VIRAL_X) || (p.xV != null && p.xV <= 1 / VIRAL_X))
+        : p => (p.xE != null && p.xE >= VIRAL_X) || (p.xV != null && p.xV >= VIRAL_X))
+      .sort(flop
+        ? (x, y) => Math.min(x.xE ?? 9, x.xV ?? 9) - Math.min(y.xE ?? 9, y.xV ?? 9)
+        : (x, y) => Math.max(y.xE || 0, y.xV || 0) - Math.max(x.xE || 0, x.xV || 0));
     out.set(a, { medEng: mE, medViews: mV, n: all.length, hits });
   }
   return out;
 }
 
-function drawViral(D) {
-  const V = viralFor(D, st.w), box = document.getElementById('viral');
-  document.getElementById('vnote').textContent = `Допис «залетів», якщо набрав щонайменше втричі більше вподобайок і коментарів (або переглядів — для рілсів), ніж звичайний допис цієї ж сторінки (медіана всіх її дописів у моніторингу). ${st.w === 0 ? 'Усі дописи за весь час моніторингу.' : 'Дописи, що були в сітці сторінки за обраний період.'} Спільні дописи, автор яких інша сторінка, не враховано.`;
+function drawViral(D, flop) {
+  const V = viralFor(D, st.w, flop), box = document.getElementById(flop ? 'flop' : 'viral');
+  document.getElementById(flop ? 'fnote' : 'vnote').textContent = flop
+    ? `Допис провальний, якщо набрав щонайменше втричі менше вподобайок і коментарів (або переглядів — для рілсів), ніж звичайний допис цієї ж сторінки. Враховано лише дописи, яким уже щонайменше 3 доби: свіжі ще набирають. ${st.w === 0 ? 'Усі дописи за весь час моніторингу.' : 'Дописи, що були в сітці сторінки за обраний період.'} Чужі спільні дописи не враховано.`
+    : `Допис «залетів», якщо набрав щонайменше втричі більше вподобайок і коментарів (або переглядів — для рілсів), ніж звичайний допис цієї ж сторінки (медіана всіх її дописів у моніторингу). ${st.w === 0 ? 'Усі дописи за весь час моніторингу.' : 'Дописи, що були в сітці сторінки за обраний період.'} Спільні дописи, автор яких інша сторінка, не враховано.`;
   const order = [...D.accs].sort((a, b) => (a === OWN ? -1 : b === OWN ? 1 : V.get(b).hits.length - V.get(a).hits.length || D.names.get(a).localeCompare(D.names.get(b), 'uk')));
   const TYPE = { reel: 'Рілс', carousel: 'Карусель', photo: 'Фото', video: 'Відео' };
-  const x = v => '×' + (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
+  const x = v => flop ? 'у ' + (Math.round(10 / v) / 10).toFixed(1).replace('.', ',') + ' р. менше' : '×' + (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
+  const hit = v => v != null && (flop ? v <= 1 / VIRAL_X : v >= VIRAL_X);
   box.replaceChildren(...order.map(a => {
-    const v = V.get(a), sec = document.createElement('div'); sec.className = 'vacc' + (a === OWN ? ' own' : '');
+    const v = V.get(a), sec = document.createElement('div'); sec.className = 'vacc' + (a === OWN ? ' own' : '') + (flop ? ' flop' : '');
     const h = document.createElement('div'); h.className = 'vh';
     const nm = document.createElement('b'); nm.textContent = D.names.get(a);
     const sub = document.createElement('span'); sub.className = 'muted small';
     sub.textContent = ` · звичайний допис: ${v.medEng == null ? '—' : nf.format(Math.round(v.medEng))} вподобайок і коментарів` + (v.medViews ? `, рілс: ${nf.format(Math.round(v.medViews))} переглядів` : '');
     h.append(nm, sub); sec.appendChild(h);
-    if (!v.hits.length) { const e = document.createElement('div'); e.className = 'muted small vnone'; e.textContent = 'Немає дописів, що залетіли'; sec.appendChild(e); return sec; }
+    if (!v.hits.length) { const e = document.createElement('div'); e.className = 'muted small vnone'; e.textContent = flop ? 'Немає провальних дописів' : 'Немає дописів, що залетіли'; sec.appendChild(e); return sec; }
     for (const p of v.hits) {
       const r = document.createElement('div'); r.className = 'vrow';
       const t = document.createElement('a'); t.href = `https://www.instagram.com/p/${encodeURIComponent(p.code)}/`; t.target = '_blank'; t.rel = 'noopener'; t.textContent = p.caption || '(без підпису)';
@@ -214,8 +229,8 @@ function drawViral(D) {
       meta.textContent = `${TYPE[p.type] || p.type} · з ${dS(p.first)}${p.young ? ' · новий, ще росте' : ''}`;
       const nums = document.createElement('span'); nums.className = 'vnum';
       const parts = [];
-      parts.push(`${nf.format(p.eng)} вподоб.+комент.` + (p.xE != null && p.xE >= VIRAL_X ? ` (${x(p.xE)})` : ''));
-      if (p.views != null) parts.push(`${nf.format(p.views)} перегл.` + (p.xV != null && p.xV >= VIRAL_X ? ` (${x(p.xV)})` : ''));
+      parts.push(`${nf.format(p.eng)} вподоб.+комент.` + (hit(p.xE) && p.xE > 0 ? ` (${x(p.xE)})` : ''));
+      if (p.views != null) parts.push(`${nf.format(p.views)} перегл.` + (hit(p.xV) && p.xV > 0 ? ` (${x(p.xV)})` : ''));
       nums.textContent = parts.join(' · ');
       const left = document.createElement('div'); left.append(t, document.createElement('br'), meta);
       r.append(left, nums); sec.appendChild(r);
@@ -340,7 +355,7 @@ function render() {
   document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', Number(b.dataset.w) === st.w));
   document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.m === st.mode));
   document.getElementById('asof').textContent = 'Останній знімок: ' + dL(D.dates[D.dates.length - 1]) + ' · оновлюється щоранку';
-  drawTable(D); drawChart(D); drawViral(D);
+  drawTable(D); drawChart(D); drawViral(D, false); drawViral(D, true);
 }
 
 document.querySelectorAll('#seg button').forEach(b => b.onclick = () => { st.w = Number(b.dataset.w); render(); });
